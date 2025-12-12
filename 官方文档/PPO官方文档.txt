@@ -1,0 +1,253 @@
+PPO Trainer
+Deprecation Notice: PPOTrainer and PPOConfig have been moved to trl.experimental.ppo and will be removed from trl.trainer in TRL 0.29.0. Please update your imports to use from trl.experimental.ppo import PPOConfig, PPOTrainer instead. See issue #4466 for more information.
+TRL supports training LLMs with Proximal Policy Optimization (PPO).
+注意：我使用的是最新的trl0.26.0版本。
+References:
+
+Fine-Tuning Language Models from Human Preferences
+Learning to Summarize from Human Feedback
+The N Implementation Details of RLHF with PPO
+The N+ Implementation Details of RLHF with PPO: A Case Study on TL;DR Summarization
+Get started
+To just run a PPO script to make sure the trainer can run, you can run the following command to train a PPO model with a dummy reward model.
+```python
+python examples/scripts/ppo/ppo.py \
+    --dataset_name trl-internal-testing/descriptiveness-sentiment-trl-style \
+    --dataset_train_split descriptiveness \
+    --learning_rate 3e-6 \
+    --num_ppo_epochs 1 \
+    --num_mini_batches 1 \
+    --output_dir models/minimal/ppo \
+    --per_device_train_batch_size 64 \
+    --gradient_accumulation_steps 1 \
+    --total_episodes 10000 \
+    --model_name_or_path EleutherAI/pythia-1b-deduped \
+    --sft_model_path EleutherAI/pythia-1b-deduped \
+    --reward_model_path EleutherAI/pythia-1b-deduped \
+    --missing_eos_penalty 1.0
+```
+Explanation of the logged metrics
+The logged metrics are as follows. Here is an example tracked run at Weights and Biases
+
+eps: Tracks the number of episodes per second.
+objective/kl: The mean Kullback-Leibler (KL) divergence between the current policy and reference policy.
+objective/entropy: The mean entropy of the policy, indicating the randomness of the actions chosen by the policy.
+objective/non_score_reward: The mean reward from non-score-related sources, basically beta * kl.sum(1), where beta is the KL penalty coefficient and kl is the per-token KL divergence.
+objective/rlhf_reward: The mean RLHF reward, which is score - non_score_reward.
+objective/scores: The mean scores returned by the reward model / environment.
+policy/approxkl_avg: The average approximate KL divergence between consecutive PPO policies. Note that this is not the same as objective/kl.
+policy/clipfrac_avg: The average fraction of policy updates that are clipped, indicating how often the policy updates are constrained to prevent large changes.
+loss/policy_avg: The average policy loss, indicating how well the policy is performing.
+loss/value_avg: The average value loss, indicating the difference between the predicted value and the actual reward.
+val/clipfrac_avg: The average fraction of value function updates that are clipped, similar to policy/clipfrac_avg but for the value function.
+policy/entropy_avg: The average entropy of the policy during training, indicating how diverse the policy’s actions are.
+val/ratio: The mean ratio of the current policy probability to the old policy probability, providing a measure of how much the policy has changed.
+val/ratio_var: The variance of the val/ratio, indicating the variability in policy changes.
+val/num_eos_tokens: The number of end-of-sequence (EOS) tokens generated, which can indicate the number of complete responses.
+lr: lr: The current learning rate used by the optimizer.
+episode: episode: The current episode count in the training process.
+Cookbook
+Debugging TIP: objective/rlhf_reward: this is the ultimate objective of the RLHF training. If training works as intended, this metric should keep going up.
+Debugging TIP: val/ratio: this number should float around 1.0, and it gets clipped by --cliprange 0.2 with PPO’s surrogate loss. So if this ratio is too high like 2.0 or 1000.0 or too small like 0.1, it means the updates between consecutive policies are too drastic. You should try understand why this is happening and try to fix it.
+Memory TIP: If you are running out of memory, you can try to reduce the --per_device_train_batch_size or increase the --gradient_accumulation_steps to reduce the memory footprint.
+Memory TIP: If you have multiple GPUs, you can also run training with DeepSpeed stage 3 to reduce the memory footprint accelerate launch --config_file examples/accelerate_configs/deepspeed_zero3.yaml.
+Usage TIP: We recommend to use the “EOS trick” via --missing_eos_penalty, which subtracts a static scalar penalty from the score of completions that do not end with an EOS token. This can help the model learn to generate more coherent completions.
+What is my model doing exactly?
+To help you understand what your model is doing, we periodically log some sample completions from the model. Here is an example of a completion. In an example tracked run at Weights and Biases, it looks like the following, allowing you to see the model’s response at different stages of training. By default we generate --num_sample_generations 10 during training, but you can customize the number of generations.
+n the logs the sampled generations look like
+```python
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┓
+┃ query                           ┃ model response                  ┃ score    ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━┩
+│  SUBREDDIT: r/AskReddit         │  I'm in love with a friend, and │ 3.921875 │
+│                                 │ I don't know how to get rid of  │          │
+│ TITLE: How do you get someone   │ those feelings. I'm             │          │
+│ out of your head?               │ desperate.<|endoftext|>[PAD][P… │          │
+│                                 │                                 │          │
+│ POST: Hi,                       │                                 │          │
+│ I'm 22, and I have been with my │                                 │          │
+│ girlfriend for 5 years now. We  │                                 │          │
+│ recently moved together. We've  │                                 │          │
+│ always loved each other         │                                 │          │
+│ intensely.                      │                                 │          │
+│                                 │                                 │          │
+│ Problem, I recently started to  │                                 │          │
+│ have feelings for an other      │                                 │          │
+│ person (a friend). This person  │                                 │          │
+│ has had a boyfriend for now 3   │                                 │          │
+│ years, and has absolutely no    │                                 │          │
+│ ideas. Those feelings were so   │                                 │          │
+│ strong, it was hard to hide     │                                 │          │
+│ them. After 2 months of me      │                                 │          │
+│ being distant and really sad,   │                                 │          │
+│ my girlfriend forced me to say  │                                 │          │
+│ what was bothering me. I'm not  │                                 │          │
+│ a good liar, and now she knows. │                                 │          │
+│                                 │                                 │          │
+│ We decided to give us a week    │                                 │          │
+│ alone, I went to my parents.    │                                 │          │
+│                                 │                                 │          │
+│ Now, I'm completely lost. I     │                                 │          │
+│ keep on thinking about this     │                                 │          │
+│ person, and I hate that. I      │                                 │          │
+│ would like for those feelings   │                                 │          │
+│ to go away, to leave me alone.  │                                 │          │
+│ But I can't.                    │                                 │          │
+│                                 │                                 │          │
+│ What do I do? It's been 3       │                                 │          │
+│ months now, and I'm just        │                                 │          │
+│ desperate.                      │                                 │          │
+│                                 │                                 │          │
+│ TL;DR:                          │                                 │          │
+├─────────────────────────────────┼─────────────────────────────────┼──────────┤
+│  SUBREDDIT: r/pettyrevenge      │  My mom woke me up with a loud  │ 6.84375  │
+│                                 │ TV. I blasted Gangnam Style on  │          │
+│ TITLE: So, my mom woke me up    │ repeat, with the bass cranked   │          │
+│ with a loud TV.                 │ up as high as it could          │          │
+│                                 │ go.<|endoftext|>[PAD][PAD][PAD… │          │
+│ POST: She was in her living     │                                 │          │
+│ room, watching TV. This was at  │                                 │          │
+│ about 8:30 in the morning, and  │                                 │          │
+│ she was exercising. She turned  │                                 │          │
+│ the TV up extra loud to hear it │                                 │          │
+│ over her excercycle, and woke   │                                 │          │
+│ me up. I went in there asking   │                                 │          │
+│ for her to turn it down. She    │                                 │          │
+│ said she didn't have to; I      │                                 │          │
+│ explained that I always used    │                                 │          │
+│ headphones so she didn't have   │                                 │          │
+│ to deal with my noise and that  │                                 │          │
+│ she should give me a little     │                                 │          │
+│ more respect, given that I paid │                                 │          │
+│ rent at the time.               │                                 │          │
+│                                 │                                 │          │
+│ She disagreed. I went back to   │                                 │          │
+│ my room, rather pissed off at   │                                 │          │
+│ the lack of equality. I had no  │                                 │          │
+│ lock on my door; but I had a    │                                 │          │
+│ dresser right next to it, so I  │                                 │          │
+│ pulled one of the drawers out   │                                 │          │
+│ enough so that it caused the    │                                 │          │
+│ door to not be openable. Then,  │                                 │          │
+│ I turned my speakers up really  │                                 │          │
+│ loud and blasted Gangnam Style  │                                 │          │
+│ on repeat, with the bass        │                                 │          │
+│ cranked up as high as it could  │                                 │          │
+│ go.                             │                                 │          │
+│                                 │                                 │          │
+│ If you hate Gangnam Style for   │                                 │          │
+│ being overplayed, you will see  │                                 │          │
+│ why I chose that particular     │                                 │          │
+│ song. I personally don't mind   │                                 │          │
+│ it. But here's the thing about  │                                 │          │
+│ my bass; it vibrates the walls, │                                 │          │
+│ making one hell of a lot of     │                                 │          │
+│ noise. Needless to say, my mom  │                                 │          │
+│ was not pleased and shut off    │                                 │          │
+│ the internet. But it was oh so  │                                 │          │
+│ worth it.                       │                                 │          │
+│                                 │                                 │          │
+│ TL;DR:                          │                                 │          │
+└─────────────────────────────────┴─────────────────────────────────┴──────────┘
+```
+Implementation details
+This PPO implementation is based on the The N+ Implementation Details of RLHF with PPO: A Case Study on TL;DR Summarization.
+Benchmark experiments
+To validate the PPO implementation works, we ran experiment on the 1B model. Here are the command we used to run the experiment. We take the SFT / RM models directly from The N+ Implementation Details of RLHF with PPO: A Case Study on TL;DR Summarization.
+```python
+accelerate launch --config_file examples/accelerate_configs/deepspeed_zero2.yaml \
+    examples/scripts/ppo/ppo_tldr.py \
+    --output_dir models/minimal/ppo_tldr \
+    --learning_rate 3e-6 \
+    --per_device_train_batch_size 16 \
+    --gradient_accumulation_steps 4 \
+    --total_episodes 1000000 \
+    --model_name_or_path EleutherAI/pythia-1b-deduped \
+    --sft_model_path cleanrl/EleutherAI_pythia-1b-deduped__sft__tldr \
+    --reward_model_path cleanrl/EleutherAI_pythia-1b-deduped__reward__tldr \
+    --local_rollout_forward_batch_size 16 \
+    --missing_eos_penalty 1.0 \
+    --stop_token eos
+```
+Checkpoints and experiment tracking are available at:
+
+🤗 Model checkpoint
+🐝 Tracked experiment
+To evaluate, we use vLLM to load the checkpoints and GPT-4o mini as a judge model to evaluate the generated TL;DR against the reference TL;DR. For more information on how to use judges, see Judges.
+```python
+$ python examples/scripts/evals/judge_tldr.py --model_name_or_path cleanrl/EleutherAI_pythia-1b-deduped__sft__tldr --judge_model gpt-4o-mini --num_examples 1000
+Model win rate: 33.00%
+$ python examples/scripts/evals/judge_tldr.py --model_name_or_path vwxyzjn/ppo_tldr --judge_model gpt-4o-mini --num_examples 1000
+Model win rate: 64.70%
+```
+The PPO checkpoint gets a 64.7% preferred rate vs the 33.0% preference rate of the SFT checkpoint. This is a good sign that the PPO training is working as intended.
+
+Metrics:
+```python
+# pip install openrlbenchmark==0.2.1a5
+# see https://github.com/openrlbenchmark/openrlbenchmark#get-started for documentation
+# to use it, change `?we=huggingface&wpn=trl` to your own project and `?tag=pr-1540` to your own tag
+python -m openrlbenchmark.rlops_multi_metrics \
+    --filters '?we=huggingface&wpn=trl&xaxis=train/episode&ceik=output_dir&cen=sft_model_path&metrics=train/objective/rlhf_reward&metrics=train/objective/scores&metrics=train/objective/kl&metrics=train/objective/non_score_reward&metrics=train/objective/entropy&metrics=train/policy/approxkl_avg&metrics=train/policy/clipfrac_avg&metrics=train/loss/policy_avg&metrics=train/loss/value_avg&metrics=train/val/clipfrac_avg&metrics=train/policy/entropy_avg&metrics=train/val/ratio&metrics=train/val/ratio_var&metrics=train/val/num_eos_tokens&metrics=train/lr&metrics=train/eps' \
+        "cleanrl/EleutherAI_pythia-1b-deduped__sft__tldr?tag=pr-1540" \
+    --env-ids models/minimal/ppo_tldr \
+    --pc.ncols 4 \
+    --pc.ncols-legend 1 \
+    --pc.xlabel "Episode" \
+    --output-filename benchmark/trl/pr-1540/ppo \
+    --scan-history
+```
+PPOTrainer
+class trl.PPOTrainer
+( args: PPOConfigprocessing_class: transformers.tokenization_utils_base.PreTrainedTokenizerBase | transformers.image_processing_utils.BaseImageProcessor | transformers.feature_extraction_utils.FeatureExtractionMixin | transformers.processing_utils.ProcessorMixinmodel: Moduleref_model: torch.nn.modules.module.Module | Nonereward_model: Moduletrain_dataset: Datasetvalue_model: Moduledata_collator: transformers.data.data_collator.DataCollatorWithPadding | None = Noneeval_dataset: datasets.arrow_dataset.Dataset | dict[str, datasets.arrow_dataset.Dataset] | None = Noneoptimizers: tuple = (None, None)callbacks: list[transformers.trainer_callback.TrainerCallback] | None = Nonepeft_config: PeftConfig | None = None )
+Parameters
+args (experimental.ppo.PPOConfig) — Training arguments.
+processing_class (PreTrainedTokenizerBase, BaseImageProcessor, FeatureExtractionMixin or ProcessorMixin) — Class to process the data.
+model (torch.nn.Module) — Model to be trained. This is the policy model.
+ref_model (torch.nn.Module, optional) — Reference model used to compute the KL divergence. If None, a copy of the policy model is created.
+reward_model (torch.nn.Module) — Reward model used to compute the rewards.
+train_dataset (Dataset) — Dataset for training.
+value_model (torch.nn.Module) — Value model used to predict the value of a state.
+data_collator (DataCollatorWithPadding, optional) — Data collator to batch and pad samples from the dataset. If None, a default data collator is created using the processing_class.
+eval_dataset (Dataset or dict of Dataset, optional) — Dataset for evaluation.
+optimizers (tuple of torch.optim.Optimizer and torch.optim.lr_scheduler.LambdaLR, optional, defaults to (None, None)) — Tuple containing the optimizer and the learning rate scheduler to use for training. If None, the optimizer and the learning rate scheduler are created using the create_optimizer_and_scheduler method.
+callbacks (list of TrainerCallback, optional) — Callbacks to use during training.
+peft_config (PeftConfig, optional) — PEFT configuration to use PEFT for training. If None, PEFT is not used. If provided, the policy model will be wrapped with the specified PEFT adapter.
+Trainer for Proximal Policy Optimization (PPO).
+
+For details on PPO, see the paper: Proximal Policy Optimization Algorithms.
+train
+( )
+save_model
+( commit_message: typing.Optional[str] = 'End of training'blocking: bool = Truetoken: typing.Optional[str] = Nonerevision: typing.Optional[str] = None**kwargs )
+Parameters
+commit_message (str, optional, defaults to "End of training") — Message to commit while pushing.
+blocking (bool, optional, defaults to True) — Whether the function should return only when the git push has finished.
+token (str, optional, defaults to None) — Token with write permission to overwrite Trainer’s original args.
+revision (str, optional) — The git revision to commit from. Defaults to the head of the “main” branch.
+kwargs (dict[str, Any], optional) — Additional keyword arguments passed along to ~Trainer.create_model_card.
+Upload self.model and self.processing_class to the 🤗 model hub on the repo self.args.hub_model_id.
+PPOConfig
+class trl.PPOConfig
+( output_dir: typing.Optional[str] = Noneoverwrite_output_dir: bool = Falsedo_train: bool = Falsedo_eval: bool = Falsedo_predict: bool = Falseeval_strategy: typing.Union[transformers.trainer_utils.IntervalStrategy, str] = 'no'prediction_loss_only: bool = Falseper_device_train_batch_size: int = 8per_device_eval_batch_size: int = 8per_gpu_train_batch_size: typing.Optional[int] = Noneper_gpu_eval_batch_size: typing.Optional[int] = Nonegradient_accumulation_steps: int = 1eval_accumulation_steps: typing.Optional[int] = Noneeval_delay: float = 0torch_empty_cache_steps: typing.Optional[int] = Nonelearning_rate: float = 5e-05weight_decay: float = 0.0adam_beta1: float = 0.9adam_beta2: float = 0.999adam_epsilon: float = 1e-08max_grad_norm: float = 1.0num_train_epochs: float = 3.0max_steps: int = -1lr_scheduler_type: typing.Union[transformers.trainer_utils.SchedulerType, str] = 'linear'lr_scheduler_kwargs: dict | str | None = Nonewarmup_ratio: float = 0.0warmup_steps: int = 0log_level: str = 'passive'log_level_replica: str = 'warning'log_on_each_node: bool = Truelogging_dir: typing.Optional[str] = Nonelogging_strategy: typing.Union[transformers.trainer_utils.IntervalStrategy, str] = 'steps'logging_first_step: bool = Falselogging_steps: float = 10logging_nan_inf_filter: bool = Truesave_strategy: typing.Union[transformers.trainer_utils.SaveStrategy, str] = 'steps'save_steps: float = 500save_total_limit: typing.Optional[int] = Nonesave_safetensors: bool = Truesave_on_each_node: bool = Falsesave_only_model: bool = Falserestore_callback_states_from_checkpoint: bool = Falseno_cuda: bool = Falseuse_cpu: bool = Falseuse_mps_device: bool = Falseseed: int = 42data_seed: typing.Optional[int] = Nonejit_mode_eval: bool = Falsebf16: bool | None = Nonefp16: bool = Falsefp16_opt_level: str = 'O1'half_precision_backend: str = 'auto'bf16_full_eval: bool = Falsefp16_full_eval: bool = Falsetf32: typing.Optional[bool] = Nonelocal_rank: int = -1ddp_backend: typing.Optional[str] = Nonetpu_num_cores: typing.Optional[int] = Nonetpu_metrics_debug: bool = Falsedebug: typing.Union[str, list[transformers.debug_utils.DebugOption]] = ''dataloader_drop_last: bool = Falseeval_steps: typing.Optional[float] = Nonedataloader_num_workers: int = 0dataloader_prefetch_factor: typing.Optional[int] = Nonepast_index: int = -1run_name: str | None = Nonedisable_tqdm: typing.Optional[bool] = Noneremove_unused_columns: bool = Truelabel_names: typing.Optional[list[str]] = Noneload_best_model_at_end: bool = Falsemetric_for_best_model: typing.Optional[str] = Nonegreater_is_better: typing.Optional[bool] = Noneignore_data_skip: bool = Falsefsdp: typing.Union[list[transformers.trainer_utils.FSDPOption], str, NoneType] = Nonefsdp_min_num_params: int = 0fsdp_config: typing.Union[dict[str, typing.Any], str, NoneType] = Nonefsdp_transformer_layer_cls_to_wrap: typing.Optional[str] = Noneaccelerator_config: typing.Union[dict, str, NoneType] = Noneparallelism_config: typing.Optional[accelerate.parallelism_config.ParallelismConfig] = Nonedeepspeed: typing.Union[dict, str, NoneType] = Nonelabel_smoothing_factor: float = 0.0optim: typing.Union[transformers.training_args.OptimizerNames, str] = 'adamw_torch_fused'optim_args: typing.Optional[str] = Noneadafactor: bool = Falsegroup_by_length: bool = Falselength_column_name: str = 'length'report_to: typing.Union[NoneType, str, list[str]] = Noneproject: str = 'huggingface'trackio_space_id: typing.Optional[str] = 'trackio'ddp_find_unused_parameters: typing.Optional[bool] = Noneddp_bucket_cap_mb: typing.Optional[int] = Noneddp_broadcast_buffers: typing.Optional[bool] = Nonedataloader_pin_memory: bool = Truedataloader_persistent_workers: bool = Falseskip_memory_metrics: bool = Trueuse_legacy_prediction_loop: bool = Falsepush_to_hub: bool = Falseresume_from_checkpoint: typing.Optional[str] = Nonehub_model_id: typing.Optional[str] = Nonehub_strategy: typing.Union[transformers.trainer_utils.HubStrategy, str] = 'every_save'hub_token: typing.Optional[str] = Nonehub_private_repo: typing.Optional[bool] = Nonehub_always_push: bool = Falsehub_revision: typing.Optional[str] = Nonegradient_checkpointing: bool = Truegradient_checkpointing_kwargs: typing.Union[dict[str, typing.Any], str, NoneType] = Noneinclude_inputs_for_metrics: bool = Falseinclude_for_metrics: list = <factory>eval_do_concat_batches: bool = Truefp16_backend: str = 'auto'push_to_hub_model_id: typing.Optional[str] = Nonepush_to_hub_organization: typing.Optional[str] = Nonepush_to_hub_token: typing.Optional[str] = Nonemp_parameters: str = ''auto_find_batch_size: bool = Falsefull_determinism: bool = Falsetorchdynamo: typing.Optional[str] = Noneray_scope: typing.Optional[str] = 'last'ddp_timeout: int = 1800torch_compile: bool = Falsetorch_compile_backend: typing.Optional[str] = Nonetorch_compile_mode: typing.Optional[str] = Noneinclude_tokens_per_second: bool = Falseinclude_num_input_tokens_seen: typing.Union[str, bool] = Falseneftune_noise_alpha: typing.Optional[float] = Noneoptim_target_modules: typing.Union[NoneType, str, list[str]] = Nonebatch_eval_metrics: bool = Falseeval_on_start: bool = Falseuse_liger_kernel: bool = Falseliger_kernel_config: typing.Optional[dict[str, bool]] = Noneeval_use_gather_object: bool = Falseaverage_tokens_across_devices: bool = Truedataset_num_proc: int | None = Nonenum_mini_batches: int = 1total_episodes: int | None = Nonelocal_rollout_forward_batch_size: int = 64num_sample_generations: int = 10response_length: int = 53stop_token: typing.Optional[typing.Literal['eos']] = Nonestop_token_id: int | None = Nonetemperature: float = 0.7missing_eos_penalty: float | None = Nonesft_model_path: str = 'EleutherAI/pythia-160m'world_size: int | None = Nonenum_total_batches: int | None = Nonemicro_batch_size: int | None = Nonelocal_batch_size: int | None = Nonebatch_size: int | None = Nonelocal_mini_batch_size: int | None = Nonemini_batch_size: int | None = Noneexp_name: str = 'ppo_config'reward_model_path: str = 'EleutherAI/pythia-160m'model_adapter_name: str | None = Noneref_adapter_name: str | None = Nonenum_ppo_epochs: int = 4whiten_rewards: bool = Falsekl_coef: float = 0.05kl_estimator: typing.Literal['k1', 'k3'] = 'k1'cliprange: float = 0.2vf_coef: float = 0.1cliprange_value: float = 0.2gamma: float = 1.0lam: float = 0.95ds3_gather_for_generation: bool = True )
+Parameters
+
+exp_name (str, optional, defaults to os.path.basename(__file__)[ ---3]): Name of this experiment.
+reward_model_path (str, optional, defaults to "EleutherAI/pythia-160m") — Path to the reward model.
+model_adapter_name (str, optional) — Name of the train target PEFT adapter, when using LoRA with multiple adapters.
+ref_adapter_name (str, optional) — Name of the reference PEFT adapter, when using LoRA with multiple adapters.
+num_ppo_epochs (int, optional, defaults to 4) — Number of epochs to train.
+whiten_rewards (bool, optional, defaults to False) — Whether to whiten the rewards.
+kl_coef (float, optional, defaults to 0.05) — KL coefficient.
+kl_estimator (Literal["k1", "k3"], optional, defaults to "k1") — Which estimator for KL-Divergence to use from Approximating KL Divergence. Defaults to “k1”, a straightforward, unbiased estimator. Can be set to “k3”, an unbiased estimator with lower variance which “appears to be a strictly better estimator”. Cannot be set to “k2”, as it is used for logging purposes.
+cliprange (float, optional, defaults to 0.2) — Clip range.
+vf_coef (float, optional, defaults to 0.1) — Value function coefficient.
+cliprange_value (float, optional, defaults to 0.2) — Clip range for the value function.
+gamma (float, optional, defaults to 1.0) — Discount factor.
+lam (float, optional, defaults to 0.95) — Lambda value for GAE.
+ds3_gather_for_generation (bool, optional, defaults to True) — This setting applies to DeepSpeed ZeRO-3. If enabled, the policy model weights are gathered for generation, improving generation speed. However, disabling this option allows training models that exceed the VRAM capacity of a single GPU, albeit at the cost of slower generation.
+Configuration class for the experimental.ppo.PPOTrainer.
+
+This class includes only the parameters that are specific to PPO training. For a full list of training arguments, please refer to the TrainingArguments and OnPolicyConfig documentation. Note that default values in this class may differ from those in TrainingArguments.
+
+Using HfArgumentParser we can turn this class into argparse arguments that can be specified on the command line.

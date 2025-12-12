@@ -1,0 +1,76 @@
+请创建一个新的python文件(放在ppo文件夹下)，命名为ppo_trl_qwen_new.py 
+我的目的是在 my_ppo.py的代码基础上 ，参考代码ppo_trl_qwen.py,来在my_ppo.py基础上修改，最终实现在qwen模型下的PPO训练示例代码(注意不需要进行推理)。
+
+其中，加载模型的方式等请认真学习my_ppo.py代码，且policy模型需使用ppo_trl_qwen.py中使用的模型，即"Qwen/Qwen3-4B-Instruct-2507"。
+
+上述给你的两个代码中， my_ppo.py是我已测试能跑通的ppo相关代码(因此尽可能使用它的代码，但使用的模型不是qwen)，而ppo_trl_qwen.py只是用来参考使用什么模型，数据的模样的相关代码，不一定能跑通。
+
+此外，如果你再任何时候导入transformer库前务必设置国内镜像加速，请参考ppo_trl_qwen.py。
+
+数据集方面，请自行给定满足训练格式和模型需要的格式的示例数据集，例如ppo_trl_qwen.py中的示例数据{"query": "<|im_start|>user\n什么是LoRA？<|im_end|>\n<|im_start|>assistant\n"}。制作示例数据集时，请参考ppo_trl_qwen.py一样直接使用Qwen需要的数据前后缀格式即可，具体提示词模板的格式请查阅Dataset Formats.txt
+
+此外，为了避免出现过多bug，你在使用4-bit量化模型出bug时，可以考虑使用8-bit等其他量化方案。
+
+你可以去参考PPO官方文档.txt（我使用的是trl0.26.0，和官方文档对应）,Dataset Formats.txt，RewardModel官方文档.txt 。
+
+如果需要测试代码的话，请使用环境“source activate /root/autodl-tmp/llm_env”，请勿自行安装新的包，安装任何东西请与我说明
+
+-------------
+
+如果需要测试代码的话，请使用环境“source activate /root/autodl-tmp/llm_env”，请勿自行安装新的包，安装任何东西请与我说明
+
+-------------
+
+添加注释逐行解释，不需要运行代码
+
+-------------
+目前我的代码ppo_trl_qwen.py运行会报错。因此，请对照官方的示例代码ppo.py，来对我的代码ppo_trl_qwen.py进行修改
+如果需要测试代码的话，请使用环境“source activate /root/autodl-tmp/llm_env”，请勿自行安装新的包，安装任何东西请与我说明
+注意你只能修改ppo_trl_qwen.py文件，不能修改其他文件
+
+请你来使用训练好的Reward模型来进行简单的PPO训练示例，官方有提供一个示例代码ppo.py(但官方写的有点复杂，我是一个初学者，想学习如何使用trl库来进行PPO训练)。
+我自行写了一个简单的ppo_trl_qwen.py文件，但跑不通，其数据集的构造方式、使用的模型可以供你参考。
+
+其中，训练好的Reward模型在/root/autodl-tmp/ppo/qwen3_reward_lora文件夹下,这个是基于ppo_reward_trl_qwen.py训练的
+如果需要测试代码的话，请使用环境“source activate /root/autodl-tmp/llm_env”，请勿自行安装新的包，安装任何东西请与我说明
+一些官方文档可以参考：PPO官方文档.txt，Dataset Formats.txt，RewardModel官方文档.txt，更鼓励你直接去读取库中的帮助文档。
+此外，如果你需要在命令行窗口中导入transformer相关库时，请提前设置国内镜像加速，参考ppo_reward_trl_qwen.py
+
+-------------
+
+这个是已经跑通的ppo_trl_qwen_new.py文件,结果如上。请你在这基础上增加一块代码，用于使用训练好的策略模型来进行简单的推理。
+如果需要测试代码的话，请使用环境“source activate /root/autodl-tmp/llm_env”，请勿自行安装新的包，安装任何东西请与我说明
+此外，如果你再任何时候导入transformer库前务必设置国内镜像加速，请参考ppo_trl_qwen_new.py。
+
+
+--------------
+
+注意到奖励模型是重新初始化的，如果我想使用训练好的奖励模型来进行PPO训练，即使用/root/autodl-tmp/ppo/qwen3_reward_lora文件夹下的已经训练好的量化模型(这个模型是基于ppo_reward_trl_qwen.py训练的)，该如何修改代码？
+如果需要测试代码的话，请使用环境“source activate /root/autodl-tmp/llm_env”，请勿自行安装新的包，安装任何东西请与我说明
+此外，如果你再任何时候导入transformer库前务必设置国内镜像加速，请参考ppo_trl_qwen_new.py。
+
+---------------
+
+请创建一个新的python文件(放在grpo文件夹下)，命名为grpo_trl_qwen_new.py 
+我的目的是在ppo_trl_qwen_new.py的代码基础上 ，参考官方文档：GRPO_quick_start.txt, GRPO_reward_model.txt, GRPOConfig.txt, GRPOTrainer.txt来在ppo_trl_qwen_new.py基础上修改，最终实现在qwen模型下的GRPO训练示例代码。
+
+你需要使用ppo_trl_qwen.py中使用的模型，即"Qwen/Qwen3-4B-Instruct-2507"。
+此外，如果你再任何时候导入transformer库前务必设置国内镜像加速，请参考ppo_trl_qwen.py。
+
+数据集方面，请自行给定满足训练格式和模型需要的格式的示例数据集，例如ppo_trl_qwen_new.py中的示例数据{"query": "<|im_start|>user\n什么是LoRA？<|im_end|>\n<|im_start|>assistant\n"}。制作示例数据集时，请参考ppo_trl_qwen_new.py一样直接使用Qwen需要的数据前后缀格式即可，具体提示词模板的格式请查阅Dataset Formats.txt
+
+在使用GRPOConfig前，务必仔细阅读GRPOConfig.txt，GRPOTrainer也是如此。
+
+你可以去参考GRPO相关的官方文档（我使用的是trl0.26.0，和官方文档对应）：GRPO_quick_start.txt, GRPO_reward_model.txt, GRPOConfig.txt, GRPOTrainer.txt,Dataset Formats.txt，RewardModel官方文档.txt 。
+
+如需使用已训练好的奖励模型，其位于/root/autodl-tmp/grpo/qwen3_reward_lora(这个是基于ppo_reward_trl_qwen.py文件创建的)
+你也可以增加类似GRPO_reward_model.txt提到的，使用奖励函数的多种形式，让我可以选择。
+
+如果需要测试代码的话，请使用环境“source activate /root/autodl-tmp/llm_env”，请勿自行安装新的包，安装任何东西请与我说明
+
+-------------------
+
+请填写README.md文件，注意介绍清楚文件夹“官方文档”，“学习代码用的提示词”，“grpo”，“ppo”，“sft_basic”文件夹的作用
+并依次介绍里面都有些什么代码，作用是什么(每个代码的简要作用都会在开头的注释中，供你参考)
+要求填写内容简洁而专业，我后续会需要将这个README.md以及上面提到的几个文件夹一起打包放在GITHUB仓库中。
+

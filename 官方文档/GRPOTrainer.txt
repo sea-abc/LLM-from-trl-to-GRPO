@@ -1,0 +1,85 @@
+class trl.GRPOTrainer
+( model: str | transformers.modeling_utils.PreTrainedModelreward_funcs: str | transformers.modeling_utils.PreTrainedModel | collections.abc.Callable[[list, list], list[float]] | list[str | transformers.modeling_utils.PreTrainedModel | collections.abc.Callable[[list, list], list[float]]]args: trl.trainer.grpo_config.GRPOConfig | None = Nonetrain_dataset: datasets.arrow_dataset.Dataset | datasets.iterable_dataset.IterableDataset | None = Noneeval_dataset: datasets.arrow_dataset.Dataset | datasets.iterable_dataset.IterableDataset | dict[str, datasets.arrow_dataset.Dataset | datasets.iterable_dataset.IterableDataset] | None = Noneprocessing_class: transformers.tokenization_utils_base.PreTrainedTokenizerBase | transformers.processing_utils.ProcessorMixin | None = Nonereward_processing_classes: transformers.tokenization_utils_base.PreTrainedTokenizerBase | list[transformers.tokenization_utils_base.PreTrainedTokenizerBase] | None = Nonecallbacks: list[transformers.trainer_callback.TrainerCallback] | None = Noneoptimizers: tuple = (None, None)peft_config: PeftConfig | None = Nonetools: list[collections.abc.Callable] | None = Nonerollout_func: collections.abc.Callable[[list[str], 'GRPOTrainer'], dict[str, typing.Any]] | None = None )
+Parameters
+
+model (str | PreTrainedModel) — Model to be trained. Can be either:
+A string, being the model id of a pretrained model hosted inside a model repo on huggingface.co, or a path to a directory containing model weights saved using save_pretrained, e.g., './my_model_directory/'. The model is loaded using from_pretrained with the keyword arguments in args.model_init_kwargs.
+A PreTrainedModel object. Only causal language models are supported.
+reward_funcs (RewardFunc | list[RewardFunc]) — Reward functions to be used for computing the rewards. To compute the rewards, we call all the reward functions with the prompts and completions and sum the rewards. Can be either:
+A single reward function, such as:
+
+A string: The model ID of a pretrained model hosted inside a model repo on huggingface.co, or a path to a directory containing model weights saved using save_pretrained, e.g., './my_model_directory/'. The model is loaded using from_pretrained with num_labels=1 and the keyword arguments in args.model_init_kwargs.
+
+A PreTrainedModel object: Only sequence classification models are supported.
+
+A custom reward function: The function is provided with the prompts and the generated completions, plus any additional columns in the dataset. It should return a list of rewards. Custom reward functions can also return None when the reward is not applicable to those samples. This is useful for multi-task training where different reward functions apply to different types of samples. When a reward function returns None for a sample, that reward function is excluded from the reward calculation for that sample. For more details, see Using a custom reward function.
+
+The trainer’s state is also passed to the reward function. The trainer’s state is an instance of TrainerState and can be accessed by accessing the trainer_state argument to the reward function’s signature.
+
+A list of reward functions, where each item can independently be any of the above types. Mixing different types within the list (e.g., a string model ID and a custom reward function) is allowed.
+
+args (GRPOConfig, optional) — Configuration for this trainer. If None, a default configuration is used.
+train_dataset (Dataset or IterableDataset) — Dataset to use for training. It must include a column "prompt". Any additional columns in the dataset is ignored. The format of the samples can be either:
+Standard: Each sample contains plain text.
+Conversational: Each sample contains structured messages (e.g., role and content).
+eval_dataset (Dataset, IterableDataset or dict[str, Dataset | IterableDataset]) — Dataset to use for evaluation. It must meet the same requirements as train_dataset.
+processing_class (PreTrainedTokenizerBase, ProcessorMixin, optional) — Processing class used to process the data. The padding side must be set to “left”. If None, the processing class is loaded from the model’s name with from_pretrained. A padding token, tokenizer.pad_token, must be set. If the processing class has not set a padding token, tokenizer.eos_token will be used as the default.
+reward_processing_classes (PreTrainedTokenizerBase or list[PreTrainedTokenizerBase], optional) — Processing classes corresponding to the reward functions specified in reward_funcs. Can be either:
+A single processing class: Used when reward_funcs contains only one reward function.
+A list of processing classes: Must match the order and length of the reward functions in reward_funcs. If set to None, or if an element of the list corresponding to a PreTrainedModel is None, the tokenizer for the model is automatically loaded using from_pretrained. For elements in reward_funcs that are custom reward functions (not PreTrainedModel), the corresponding entries in reward_processing_classes are ignored.
+callbacks (list of TrainerCallback, optional) — List of callbacks to customize the training loop. Will add those to the list of default callbacks detailed in here.
+If you want to remove one of the default callbacks used, use the remove_callback method.
+
+optimizers (tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR], optional, defaults to (None, None)) — A tuple containing the optimizer and the scheduler to use. Will default to an instance of AdamW on your model and a scheduler given by get_linear_schedule_with_warmup controlled by args.
+peft_config (PeftConfig, optional) — PEFT configuration used to wrap the model. If None, the model is not wrapped.
+tools (list of Callable, optional) — A list of callable tool functions that the model can invoke during generation. Each tool should be a standard Python function with properly type-hinted arguments and return values, and a Google-style docstring describing its purpose, arguments, and return value. For more details, see: https://huggingface.co/docs/transformers/en/chat_extras#passing-tools. The model uses the function’s name, type hints, and docstring to determine how to call it. Ensure that the model’s chat template supports tool use and that it has been fine-tuned for tool calling.
+rollout_func (RolloutFunc, optional) — Function to use for generating completions. It receives the list of prompts allocated to the current process and the trainer instance. It must return a dict with "prompt_ids", "completion_ids", and "logprobs" fields. Any other fields are forwarded to the reward functions. This feature is experimental and may change or be removed at any time without prior notice.
+Trainer for the Group Relative Policy Optimization (GRPO) method. This algorithm was initially proposed in the paper DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models.
+
+Example:
+```python
+from datasets import load_dataset
+from trl import GRPOTrainer
+from trl.rewards import accuracy_reward
+
+dataset = load_dataset("trl-lib/DeepMath-103K", split="train")
+
+trainer = GRPOTrainer(
+    model="Qwen/Qwen2-0.5B-Instruct",
+    reward_funcs=accuracy_reward,
+    train_dataset=dataset,
+)
+trainer.train()
+```
+
+
+train
+( resume_from_checkpoint: typing.Union[str, bool, NoneType] = Nonetrial: typing.Union[ForwardRef('optuna.Trial'), dict[str, typing.Any], NoneType] = Noneignore_keys_for_eval: typing.Optional[list[str]] = None**kwargs: typing.Any )
+
+Parameters
+
+resume_from_checkpoint (str or bool, optional) — If a str, local path to a saved checkpoint as saved by a previous instance of Trainer. If a bool and equals True, load the last checkpoint in args.output_dir as saved by a previous instance of Trainer. If present, training will resume from the model/optimizer/scheduler states loaded here.
+trial (optuna.Trial or dict[str, Any], optional) — The trial run or the hyperparameter dictionary for hyperparameter search.
+ignore_keys_for_eval (list[str], optional) — A list of keys in the output of your model (if it is a dictionary) that should be ignored when gathering predictions for evaluation during the training.
+kwargs (dict[str, Any], optional) — Additional keyword arguments used to hide deprecated arguments
+Main training entry point.
+
+save_model
+( output_dir: typing.Optional[str] = None_internal_call: bool = False )
+
+Will save the model, so you can reload it using from_pretrained().
+
+Will only save from the main process.
+
+push_to_hub
+( commit_message: typing.Optional[str] = 'End of training'blocking: bool = Truetoken: typing.Optional[str] = Nonerevision: typing.Optional[str] = None**kwargs )
+
+Parameters
+
+commit_message (str, optional, defaults to "End of training") — Message to commit while pushing.
+blocking (bool, optional, defaults to True) — Whether the function should return only when the git push has finished.
+token (str, optional, defaults to None) — Token with write permission to overwrite Trainer’s original args.
+revision (str, optional) — The git revision to commit from. Defaults to the head of the “main” branch.
+kwargs (dict[str, Any], optional) — Additional keyword arguments passed along to ~Trainer.create_model_card.
+Upload self.model and self.processing_class to the 🤗 model hub on the repo self.args.hub_model_id.
+

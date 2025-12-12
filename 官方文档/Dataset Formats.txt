@@ -1,0 +1,56 @@
+Dataset formats and types
+This guide provides an overview of the dataset formats and types supported by each trainer in TRL.
+
+Overview of the dataset formats and types
+The format of a dataset refers to how the data is structured, typically categorized as either standard or conversational.
+The type is associated with the specific task the dataset is designed for, such as prompt-only or preference. Each type is characterized by its columns, which vary according to the task, as shown in the table.
+
+Type \ Format	
+Standard	
+Conversational
+
+Language modeling	
+{"text": "The sky is blue."}
+{"messages": [{"role": "user", "content": "What color is the sky?"},
+              {"role": "assistant", "content": "It is blue."}]}
+Prompt-only	
+{"prompt": "The sky is"}
+{"prompt": [{"role": "user", "content": "What color is the sky?"}]}
+
+Prompt-completion	
+{"prompt": "The sky is",
+ "completion": " blue."}
+{"prompt": [{"role": "user", "content": "What color is the sky?"}],
+ "completion": [{"role": "assistant", "content": "It is blue."}]}
+
+Preference	
+{"prompt": "The sky is",
+ "chosen": " blue.",
+ "rejected": " green."}
+or, with implicit prompt:
+{"chosen": "The sky is blue.",
+ "rejected": "The sky is green."}
+{"prompt": [{"role": "user", "content": "What color is the sky?"}],
+ "chosen": [{"role": "assistant", "content": "It is blue."}],
+ "rejected": [{"role": "assistant", "content": "It is green."}]}
+or, with implicit prompt:
+{"chosen": [{"role": "user", "content": "What color is the sky?"},
+              {"role": "assistant", "content": "It is blue."}],
+ "rejected": [{"role": "user", "content": "What color is the sky?"},
+                {"role": "assistant", "content": "It is green."}]}
+
+Unpaired preference	
+{"prompt": "The sky is",
+ "completion": " blue.",
+ "label": True}
+{"prompt": [{"role": "user", "content": "What color is the sky?"}],
+ "completion": [{"role": "assistant", "content": "It is green."}],
+ "label": False}
+
+Stepwise supervision	
+{"prompt": "Which number is larger, 9.8 or 9.11?",
+ "completions": ["The fractional part of 9.8 is 0.8.",
+                 "The fractional part of 9.11 is 0.11.",
+                 "0.11 is greater than 0.8.",
+                 "Hence, 9.11 > 9.8."],
+ "labels": [True, True, False, False]}

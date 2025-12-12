@@ -1,0 +1,37 @@
+class trl.trainer.sft_trainer.DataCollatorForLanguageModeling
+( pad_token_id: intcompletion_only_loss: bool = Truepadding_free: bool = Falsepad_to_multiple_of: int | None = Nonereturn_tensors: str = 'pt' )
+
+Parameters
+
+pad_token_id (int) — Token ID to use for padding.
+completion_only_loss (bool, optional, defaults to True) — When the input contains a completion mask (completion_mask), the labels are set to -100 for the tokens that are no in the completion.
+padding_free (bool, optional, defaults to False) — If set to True, the sequences will be flattened into a single sequence, and the position IDs will be generated accordingly and returned instead of the attention mask.
+pad_to_multiple_of (int, optional) — If set, the sequences will be padded to a multiple of this value.
+return_tensors (str, optional, defaults to "pt") — Type of Tensor to return. Only "pt" is currently supported.
+Data collator used for language modeling data. Inputs are dynamically padded to the maximum length of a batch.
+
+This collator expects each example in the input list to be a dictionary containing at least the "input_ids" key. If the input contains a "completion_mask", it is used to set the labels to -100 for tokens that are not in the completion. If "assistant_masks" are present, they are used to set the labels to -100 for tokens that are not in the assistant part of the sequence. The collator returns a dictionary containing the following keys:
+
+"input_ids": Tensor of input IDs, padded to the maximum length of the batch.
+"labels": Tensor of labels, padded to the maximum length of the batch. If completion_only_loss is set to True, tokens that are not in the completion are set to -100. If assistant_masks are present, tokens that are not in the assistant part of the sequence are set to -100. If padding_free is set to False, the following key is also returned:
+"attention_mask": Tensor of attention masks, padded to the maximum length of the batch. If padding_free is set to True, the following key is also returned:
+"position_ids": Tensor of position IDs, padded to the maximum length of the batch.
+Examples:
+```python
+from trl.trainer.sft_trainer import DataCollatorForLanguageModeling
+
+collator = DataCollatorForLanguageModeling(pad_token_id=0)
+examples = [{"input_ids": [1, 2, 3]}, {"input_ids": [4, 5]}]
+collator(examples)
+
+# With completion mask
+examples = [
+    {"input_ids": [1, 2, 3], "completion_mask": [0, 1, 1]},
+    {"input_ids": [4, 5], "completion_mask": [0, 1]},
+]
+collator(examples)
+
+# With padding_free
+collator = DataCollatorForLanguageModeling(pad_token_id=0, padding_free=True)
+collator(examples)
+```
